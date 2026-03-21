@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ktv_control">#E6E8EB</color>
+    <color name="ktv_control_muted">#A8B0BA</color>
+</resources>

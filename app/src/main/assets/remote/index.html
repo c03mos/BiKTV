@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>BiKTV 点歌台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --muted: #8a8f98;
+      --text: #1e2329;
+      --accent: #2b2f36;
+      --line: #eceff3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif; background: var(--bg); color: var(--text); }
+    header { position: sticky; top: 0; z-index: 10; background: rgba(243,244,246,0.9); backdrop-filter: blur(10px); padding: 12px 14px 8px; }
+    .title { text-align: center; font-weight: 600; letter-spacing: 0.2px; position: relative; }
+    .queue-btn { position: absolute; right: 0; top: -2px; background: var(--card); border-radius: 999px; padding: 6px 10px; font-size: 12px; box-shadow: 0 6px 18px rgba(17,24,39,0.08); display: inline-flex; align-items: center; gap: 6px; }
+    .queue-count { min-width: 18px; height: 18px; border-radius: 9px; background: #ff3b30; color: #fff; font-size: 11px; display: grid; place-items: center; padding: 0 4px; }
+    .tabs { display: flex; gap: 8px; overflow-x: auto; padding-top: 10px; }
+    .tab { border: 1px solid var(--line); background: var(--card); color: #444; padding: 8px 12px; border-radius: 999px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .wrap { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 12px 14px 24px; }
+    .card { background: var(--card); border-radius: 16px; padding: 12px; box-shadow: 0 8px 22px rgba(17,24,39,0.06); border: 1px solid var(--line); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn { background: #f7f8fa; color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .split { height: 1px; background: var(--line); margin: 12px 0; }
+
+    .list { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    .item { padding: 10px 14px; border-radius: 999px; background: #f7f8fa; border: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; min-height: 64px; cursor: pointer; transition: transform 120ms ease, background 120ms ease; }
+    .item:active { transform: scale(0.98); background: #eef0f4; }
+    .item.busy { opacity: 0.6; pointer-events: none; }
+    .item-title { font-size: 14px; }
+    .item-sub { font-size: 12px; color: var(--muted); }
+    .item-actions { display: flex; gap: 8px; width: 100%; }
+    .item-actions .btn { flex: 1; padding: 8px 10px; }
+
+    .queue { font-size: 13px; }
+    .badge { font-size: 11px; padding: 2px 6px; border-radius: 8px; background: #eef0f4; color: #333; border: 1px solid var(--line); }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: rgba(20,20,20,0.9); color: #fff; padding: 8px 12px; border-radius: 10px; font-size: 12px; opacity: 0; transition: opacity 200ms ease; }
+    .toast.show { opacity: 1; }
+    .fly-dot { position: fixed; width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; z-index: 999; pointer-events: none; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="title">
+    点歌台
+    <div class="queue-btn" id="queueBtn">队列 <span class="queue-count" id="queueCount">0</span></div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="search">搜索</button>
+    <button class="tab" data-tab="toplist">榜单</button>
+    <button class="tab" data-tab="artist">歌手</button>
+    <button class="tab" data-tab="resource">本地</button>
+    <button class="tab" data-tab="queue">队列</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card section active" id="section-search">
+    <div class="row">
+      <input id="searchKeywords" class="btn" style="flex:1" placeholder="搜索歌曲，例如：海阔天空"/>
+      <button class="btn" onclick="searchSongs()">搜索</button>
+    </div>
+    <div class="split"></div>
+    <div class="list" id="searchList"></div>
+  </div>
+
+  <div class="card section" id="section-toplist">
+    <div class="row">
+      <button class="btn" onclick="loadToplist()">刷新榜单</button>
+    </div>
+    <div class="split"></div>
+    <div class="list" id="toplist"></div>
+  </div>
+
+  <div class="card section" id="section-artist">
+    <div class="row">
+      <select id="artistType" class="btn">
+        <option value="1">男歌手</option>
+        <option value="2">女歌手</option>
+        <option value="3">组合</option>
+      </select>
+      <select id="artistArea" class="btn">
+        <option value="">全部地区</option>
+        <option value="7">华语</option>
+        <option value="96">欧美</option>
+        <option value="16">韩国</option>
+        <option value="8">日本</option>
+      </select>
+      <input id="artistInitial" class="btn" style="width:80px" placeholder="首字母"/>
+      <button class="btn" onclick="loadArtists()">筛选</button>
+    </div>
+    <div class="split"></div>
+    <div class="list" id="artistList"></div>
+  </div>
+
+  <div class="card section" id="section-resource">
+    <div class="row">
+      <button class="btn" onclick="loadResources()">刷新本地歌曲</button>
+    </div>
+    <div class="split"></div>
+    <div class="list" id="resourceList"></div>
+  </div>
+
+  <div class="card section" id="section-queue">
+    <div class="row">
+      <div class="badge" id="playerStatus">player: idle</div>
+      <div class="badge" id="playerNow">当前: -</div>
+    </div>
+    <div class="split"></div>
+    <div class="list queue" id="queueList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const qs = (s) => document.querySelector(s);
+  const base = '';
+
+  function showToast(text) {
+    const el = qs('#toast');
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 900);
+  }
+
+  function lockCard(el, ms = 800) {
+    el.classList.add('busy');
+    setTimeout(() => el.classList.remove('busy'), ms);
+  }
+
+  function bumpQueueCount(delta) {
+    const el = qs('#queueCount');
+    const current = parseInt(el.textContent || '0', 10);
+    el.textContent = Math.max(0, current + delta);
+  }
+
+  function flyToQueue(x, y) {
+    const btn = qs('#queueBtn');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const dot = document.createElement('div');
+    dot.className = 'fly-dot';
+    dot.style.left = x + 'px';
+    dot.style.top = y + 'px';
+    document.body.appendChild(dot);
+    const dx = rect.left + rect.width / 2 - x;
+    const dy = rect.top + rect.height / 2 - y;
+    dot.animate([
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+      { transform: `translate(${dx}px, ${dy}px) scale(0.2)`, opacity: 0.2 }
+    ], { duration: 520, easing: 'cubic-bezier(0.22,1,0.36,1)' }).onfinish = () => dot.remove();
+  }
+
+  function enqueue(title, artist, e) {
+    if (e) { flyToQueue(e.clientX, e.clientY); bumpQueueCount(1); }
+    fetch(base + '/queue/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, artist })
+    }).catch(() => {});
+  }
+
+  async function loadToplist() {
+    const res = await fetch(base + '/ncm/toplist');
+    if (res.status === 202) { setTimeout(loadToplist, 800); return; }
+    const data = await res.json();
+    const list = data.list || [];
+    const el = qs('#toplist');
+    el.innerHTML = '';
+    list.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${item.name}</div><div class="item-sub">${item.updateFrequency || ''}</div>`;
+      div.onclick = (e) => { lockCard(div); showToast('打开榜单'); loadPlaylist(item.id, item.name); };
+      el.appendChild(div);
+    });
+  }
+
+  async function loadPlaylist(id, name) {
+    const res = await fetch(base + '/ncm/toplist/playlist?id=' + id);
+    if (res.status === 202) { setTimeout(() => loadPlaylist(id, name), 800); return; }
+    const data = await res.json();
+    const tracks = data.tracks || [];
+    const el = qs('#toplist');
+    el.innerHTML = `<div class="muted">${name} · ${tracks.length} 首</div>`;
+    tracks.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${t.name}</div><div class="item-sub">${t.artists || ''}</div>`;
+      div.onclick = (e) => { lockCard(div); showToast('已点歌'); enqueue(t.name, t.artists || '', e); };
+      el.appendChild(div);
+    });
+  }
+
+  async function loadArtists() {
+    const type = qs('#artistType').value;
+    const area = qs('#artistArea').value;
+    const initial = qs('#artistInitial').value.trim();
+    const params = new URLSearchParams();
+    params.set('type', type);
+    if (area) params.set('area', area);
+    if (initial) params.set('initial', initial);
+    const res = await fetch(base + '/ncm/artist/list?' + params.toString());
+    if (res.status === 202) { setTimeout(loadArtists, 800); return; }
+    const data = await res.json();
+    const list = data.artists || [];
+    const el = qs('#artistList');
+    el.innerHTML = '';
+    list.slice(0, 12).forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${item.name}</div><div class="item-sub">歌手</div>`;
+      div.onclick = () => { lockCard(div); showToast('打开歌手'); loadArtistSongs(item.id, item.name); };
+      el.appendChild(div);
+    });
+  }
+
+  async function loadArtistSongs(id, artistName) {
+    const res = await fetch(base + '/ncm/artist/songs?limit=20&id=' + id);
+    if (res.status === 202) { setTimeout(() => loadArtistSongs(id, artistName), 800); return; }
+    const data = await res.json();
+    const songs = data.songs || [];
+    const el = qs('#artistList');
+    el.innerHTML = `<div class="muted">${artistName} · ${songs.length} 首</div>`;
+    songs.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${s.name}</div><div class="item-sub">${s.artists || artistName}</div>`;
+      div.onclick = (e) => { lockCard(div); showToast('已点歌'); enqueue(s.name, s.artists || artistName, e); };
+      el.appendChild(div);
+    });
+  }
+
+  async function searchSongs() {
+    const keywords = qs('#searchKeywords').value.trim();
+    if (!keywords) return;
+    const res = await fetch(base + '/ncm/search?keywords=' + encodeURIComponent(keywords));
+    const data = await res.json();
+    const songs = data.songs || [];
+    const el = qs('#searchList');
+    el.innerHTML = '';
+    songs.slice(0, 20).forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${s.name}</div><div class="item-sub">${s.artists || ''}</div>`;
+      div.onclick = (e) => { lockCard(div); showToast('已点歌'); enqueue(s.name, s.artists || '', e); };
+      el.appendChild(div);
+    });
+  }
+
+  async function loadResources() {
+    const res = await fetch(base + '/resource/list');
+    const data = await res.json();
+    const list = data.list || [];
+    const el = qs('#resourceList');
+    el.innerHTML = '';
+    list.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="item-title">${item.title}</div><div class="item-sub">${item.artist || ''}</div>
+        <div class="item-actions"><button class="btn">删除</button></div>`;
+      const buttons = div.querySelectorAll('button');
+      buttons[0].onclick = () => { showToast('已删除'); deleteResource(item.title, item.artist || ''); };
+      div.onclick = (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        lockCard(div);
+        showToast('已点歌');
+        enqueueLocal(item.title, item.artist || '', item.filePath || '', e);
+      };
+      el.appendChild(div);
+    });
+  }
+
+  async function enqueueLocal(title, artist, filePath, e) {
+    if (e) { flyToQueue(e.clientX, e.clientY); bumpQueueCount(1); }
+    await fetch(base + '/resource/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, artist, filePath })
+    });
+  }
+
+  async function deleteResource(title, artist) {
+    await fetch(base + '/resource/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, artist })
+    });
+    loadResources();
+  }
+
+  function updateQueue(payload) {
+    const current = payload.current;
+    qs('#playerNow').textContent = current ? `当前: ${current.title} - ${current.artist || ''}` : '当前: -';
+    const list = payload.list || [];
+    const el = qs('#queueList');
+    el.innerHTML = list.map(it => `<div class="item"><div class="item-title">${it.title}</div><div class="item-sub">${it.artist || ''}</div></div>`).join('');
+    const total = list.length + (current ? 1 : 0);
+    qs('#queueCount').textContent = total.toString();
+  }
+
+  function updatePlayer(payload) {
+    qs('#playerStatus').textContent = `player: ${payload.status}`;
+  }
+
+  function connectWs() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'snapshot') {
+          if (msg.queue) updateQueue(msg.queue);
+          if (msg.player) updatePlayer(msg.player);
+        } else if (msg.type === 'queue_updated') {
+          if (msg.queue) updateQueue(msg.queue);
+        } else if (msg.type === 'player_state') {
+          if (msg.player) updatePlayer(msg.player);
+        }
+      } catch (e) {}
+    };
+    ws.onclose = () => setTimeout(connectWs, 1500);
+  }
+
+  function initTabs() {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const key = tab.dataset.tab;
+        document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+        const target = document.querySelector(`#section-${key}`);
+        if (target) target.classList.add('active');
+      });
+    });
+  }
+
+  loadToplist();
+  loadArtists();
+  loadResources();
+  initTabs();
+  connectWs();
+</script>
+</body>
+</html>
